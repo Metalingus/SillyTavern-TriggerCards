@@ -1,4 +1,4 @@
-import { chat_metadata, eventSource, event_types, getRequestHeaders, sendSystemMessage } from '../../../../script.js';
+import { chat_metadata, eventSource, event_types, getRequestHeaders, reloadMarkdownProcessor, sendSystemMessage } from '../../../../script.js';
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { executeSlashCommands, registerSlashCommand } from '../../../slash-commands.js';
 import { delay } from '../../../utils.js';
@@ -71,76 +71,10 @@ const deactivate = async () => {
     saveMetadataDebounced();
     await end();
 };
-const showHelp = () => {
-    sendSystemMessage('generic', `
-        <h3>Trigger Cards</h3>
-        <div>
-            All settings are saved to the active chat.
-        </div>
-        <div>
-            <code>/tc-on</code> to enable trigger cards.
-        </div>
-        <div>
-            By default, a trigger card is created for each group member with the following actions:
-        </div>
-        <ul>
-            <li><code>click</code> – trigger the character to speak</li>
-            <li><code>shift + click</code> – unmute the character</li>
-            <li><code>alt + click</code> – mute the character</li>
-        </ul>
-        <div>
-            To restore these default settings use <code>/tc-on reset=true</code>
-        </div>
-
-        <hr>
-
-        <h3>Custom cards</h3>
-        <div>
-            Instead of the member list, you can use a custom list of cards by either providing the name of a
-            Quick Reply set (the labels of the quick replies will be used as character names and to find the
-            corresponding expression images, add <code>::qr</code> to the label to execute the quick reply on
-            click instead of the normal click action) or by providing a comma-separated list of names.
-        </div>
-        <div>
-            <code>/tc-on members=myQrSet</code>
-        </div>
-        <div>
-            <code>/tc-on Name1, Name2, Name3</code>
-        </div>
-
-        <hr>
-
-        <h3>Custom actions</h3>
-        <div>
-            To use another set of actions on the cards, you can provide the name of a Quick Reply set.
-        </div>
-        <div>
-            <code>/tc-on actions=myQrSet</code>
-        </div>
-        <div>
-            In the quick replies you can use <code>{{arg::name}}</code> to get the character's name.
-        </div>
-        <div>
-            <code>/trigger {{arg::name}}</code>
-        </div>
-        <div>
-            The quick replies should be labeled as follows (use the title field in the additional options
-            dialog for the tooltip on the trigger card):
-        </div>
-        <ul>
-            <li>
-                <code></code> (empty label) – click (if you are using a QR set as member list, not providing
-                    this QR will result in a click calling the QR's command)
-            </li>
-            <li><code>c</code> – ctrl + click</li>
-            <li><code>s</code> – shift + click</li>
-            <li><code>a</code> – alt + click</li>
-            <li><code>cs</code> – ctrl + shift + click</li>
-            <li><code>ca</code> – ctrl + alt + click</li>
-            <li><code>sa</code> – shit + alt + click</li>
-            <li><code>csa</code> – ctrl + shift + alt + click</li>
-        </ul>
-    `);
+const showHelp = async () => {
+    const converter = reloadMarkdownProcessor();
+    const readme = await (await fetch('/scripts/extensions/third-party/SillyTavern-TriggerCards/README.md')).text();
+    sendSystemMessage('generic', converter.makeHtml(readme).replace(/(src=")(?=[^/])/g, '$1/scripts/extensions/third-party/SillyTavern-TriggerCards/'));
 };
 
 
