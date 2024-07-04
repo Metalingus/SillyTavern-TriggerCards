@@ -1,6 +1,10 @@
 import { chat_metadata, eventSource, event_types, getRequestHeaders, reloadMarkdownProcessor, sendSystemMessage } from '../../../../script.js';
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { executeSlashCommands, registerSlashCommand } from '../../../slash-commands.js';
+import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
+import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
 import { delay } from '../../../utils.js';
 import { quickReplyApi } from '../../quick-reply/index.js';
 
@@ -36,15 +40,88 @@ const loadSettings = ()=>{
         expression: 'joy',
         extensions: ['png', 'webp', 'gif'],
         grayscale: true,
+        mute: true,
     }, chat_metadata.triggerCards ?? {});
     chat_metadata.triggerCards = settings;
 };
 const init = ()=>{
-    registerSlashCommand('tc-on', (args, value)=>activate(args, value), [], '<span class="monospace">[actions=qrSetName members=qrSetName emote=joy extensions=png,webp,gif reset=true] ([member1, member2, ...])</span> – Activate trigger cards', true, true);
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'tc-on',
+        callback: (args, value)=>activate(args, value),
+        namedArgumentList: [
+            SlashCommandNamedArgument.fromProps({ name: 'actions',
+                description: 'name of a QR set for click actions, see /tc?',
+                typeList: [ARGUMENT_TYPE.STRING],
+                enumProvider: ()=>quickReplyApi.listSets().map(it=>new SlashCommandEnumValue(it)),
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'members',
+                description: 'name of a QR set used as member list, see /tc?',
+                typeList: [ARGUMENT_TYPE.STRING],
+                enumProvider: ()=>quickReplyApi.listSets().map(it=>new SlashCommandEnumValue(it)),
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'emote',
+                description: 'character expression to use for trigger card',
+                typeList: [ARGUMENT_TYPE.STRING],
+                enumList: [
+                    'talkinghead',
+                    'admiration',
+                    'amusement',
+                    'anger',
+                    'annoyance',
+                    'approval',
+                    'caring',
+                    'confusion',
+                    'curiosity',
+                    'desire',
+                    'disappointment',
+                    'disapproval',
+                    'disgust',
+                    'embarrassment',
+                    'excitement',
+                    'fear',
+                    'gratitude',
+                    'grief',
+                    'joy',
+                    'love',
+                    'nervousness',
+                    'optimism',
+                    'pride',
+                    'realization',
+                    'relief',
+                    'remorse',
+                    'sadness',
+                    'surprise',
+                    'neutral',
+                ],
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'extensions',
+                description: 'file extensions to use for expression image',
+                typeList: [ARGUMENT_TYPE.STRING],
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'grayscale',
+                description: 'show absent members desaturated',
+                typeList: ARGUMENT_TYPE.BOOLEAN,
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'mute',
+                description: 'show unmuted characters opaque',
+                typeList: ARGUMENT_TYPE.BOOLEAN,
+            }),
+            SlashCommandNamedArgument.fromProps({ name: 'reset',
+                description: 'reset all settings',
+                typeList: ARGUMENT_TYPE.BOOLEAN,
+            }),
+        ],
+        unnamedArgumentList: [
+            SlashCommandArgument.fromProps({ description: 'comma separated list of names to use as member list',
+                typeList: ARGUMENT_TYPE.STRING,
+            }),
+        ],
+        helpString: 'Activate Trigger Cards',
+    }));
     registerSlashCommand('tc-off', (args, value)=>deactivate(), [], 'Deactivate trigger cards', true, true);
     registerSlashCommand('tc?', (args, value)=>showHelp(), [], 'Show help for trigger cards', true, true);
 };
-eventSource.on(event_types.APP_READY, ()=>init());
+init();
+// eventSource.on(event_types.APP_READY, ()=>init());
 const activate = (args, members) => {
     if (!groupId) return;
     const memberList = members?.split(/\s*,\s*/)?.filter(it=>it);
@@ -52,6 +129,10 @@ const activate = (args, members) => {
     let gray;
     try {
         gray = JSON.parse(args.gray ?? args.grey ?? 'null');
+    } catch { /* empty */ }
+    let mute;
+    try {
+        mute = JSON.parse(args.mute ?? args.grey ?? 'null');
     } catch { /* empty */ }
     settings.actionQrSet = args.actions ?? (args.reset ? undefined : settings.actionQrSet);
     settings.memberQrSet = args.members ?? (args.reset ? undefined : settings.memberQrSet);
@@ -61,6 +142,7 @@ const activate = (args, members) => {
     settings.extensions = extList && extList.length > 0 ? extList : (args.reset ? ['png', 'webp', 'gif'] : settings.extList) ?? ['png', 'webp', 'gif'];
     if (settings.extensions && settings.extensions.filter(it=>it).length <= 0) settings.extensions = ['png', 'webp', 'gif'];
     settings.grayscale = gray ?? (args.reset ? true : settings.grayscale) ?? true;
+    settings.mute = mute ?? (args.reset ? true : settings.mute) ?? true;
     settings.isEnabled = true;
     saveMetadataDebounced();
     restart();
@@ -199,6 +281,13 @@ const getNames = (present = false)=>{
     const names = members.map(it=>it.name);
     return names;
 };
+const getMuted = ()=>{
+    const context = getContext();
+    const group = context.groups.find(it=>it.id == groupId);
+    const members = group.disabled_members.map(m=>context.characters.find(c=>c.avatar == m));
+    const names = members.map(it=>it.name);
+    return names;
+};
 const findImage = async(name) => {
     for (const ext of settings.extensions) {
         const url = `/characters/${name}/${settings.expression}.${ext}`;
@@ -215,6 +304,7 @@ const updateMembers = async() => {
     while (settings?.isEnabled && isRunning) {
         const names = getNames();
         const present = getNames(true);
+        const muted = getMuted();
         // [1,2,3,4,5,6,7,8].forEach(it=>names.push(...members.map(x=>x.name)));
         const removed = nameList.filter(it=>names.indexOf(it) == -1);
         const added = names.filter(it=>nameList.indexOf(it) == -1);
@@ -254,7 +344,12 @@ const updateMembers = async() => {
             } else {
                 img.closest('.sttc--wrapper').classList.remove('sttc--absent');
             }
-        })
+            if (settings.mute && muted.indexOf(img.getAttribute('data-character')) == -1) {
+                img.closest('.sttc--wrapper').classList.add('sttc--chatty');
+            } else {
+                img.closest('.sttc--wrapper').classList.remove('sttc--chatty');
+            }
+        });
         await delay(500);
     }
 };
