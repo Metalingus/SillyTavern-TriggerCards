@@ -5,15 +5,16 @@ import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
 import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
-import { delay } from '../../../utils.js';
+import { debounce, delay } from '../../../utils.js';
 import { quickReplyApi } from '../../quick-reply/index.js';
+import { Settings } from './src/Settings.js';
 
 const log = (...msg) => console.log('[TC]', ...msg);
 
 
 
 
-/**@type {Object} */
+/**@type {Settings} */
 let settings;
 /**@type {Promise} */
 let loop;
@@ -32,20 +33,17 @@ let nameList = [];
 
 
 const loadSettings = ()=>{
-    settings = Object.assign({
-        isEnabled: true,
-        actionQrSet: null,
-        memberQrSet: null,
-        memberList: null,
-        expression: 'joy',
-        extensions: ['png', 'webp', 'gif'],
-        grayscale: true,
-        mute: true,
-        costumes: {},
-    }, chat_metadata.triggerCards ?? {});
+    settings = new Settings();
+    settings.onRestart = restartDebounced;
     chat_metadata.triggerCards = settings;
 };
 const init = ()=>{
+    SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'tc-config',
+        callback: async(args, value)=>{
+            await settings.show();
+            return '';
+        },
+    }));
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'tc-on',
         callback: (args, value)=>activate(args, value),
         namedArgumentList: [
@@ -63,7 +61,6 @@ const init = ()=>{
                 description: 'character expression to use for trigger card',
                 typeList: [ARGUMENT_TYPE.STRING],
                 enumList: [
-                    'talkinghead',
                     'admiration',
                     'amusement',
                     'anger',
@@ -374,6 +371,8 @@ const findImage = async(name) => {
 };
 const updateMembers = async() => {
     while (settings?.isEnabled && isRunning) {
+        let expression;
+        let extensions;
         const names = getNames();
         const present = getNames(true);
         const muted = getMuted();
@@ -415,7 +414,7 @@ const updateMembers = async() => {
                 }
             }
         }
-        imgs.forEach(img=>{
+        imgs.forEach(async(img)=>{
             if (settings.grayscale && present.indexOf(img.getAttribute('data-character')) == -1) {
                 img.closest('.sttc--wrapper').classList.add('sttc--absent');
             } else {
@@ -426,7 +425,13 @@ const updateMembers = async() => {
             } else {
                 img.closest('.sttc--wrapper').classList.remove('sttc--chatty');
             }
+            if (expression != settings.expression || extensions != settings.extensions) {
+                const namePart = img.getAttribute('data-character').split('::')[0];
+                img.src = await findImage(settings.costumes?.[namePart] ?? namePart);
+            }
         });
+        expression = settings.expression;
+        extensions = settings.extensions.join(', ');
         await delay(500);
     }
 };
@@ -438,6 +443,7 @@ const restart = async()=>{
     await end();
     start();
 };
+const restartDebounced = debounce(restart);
 const start = () => {
     document.querySelector('#form_sheld').style.position = 'relative';
     root = document.createElement('div'); {
