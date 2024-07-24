@@ -1,6 +1,6 @@
 import { chat_metadata, eventSource, event_types, getRequestHeaders, reloadMarkdownProcessor, sendSystemMessage } from '../../../../script.js';
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
-import { executeSlashCommands, registerSlashCommand } from '../../../slash-commands.js';
+import { executeSlashCommands, executeSlashCommandsWithOptions, registerSlashCommand } from '../../../slash-commands.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
 import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
 import { SlashCommandEnumValue } from '../../../slash-commands/SlashCommandEnumValue.js';
@@ -19,7 +19,7 @@ let settings;
 let loop;
 /**@type {Boolean} */
 let isRunning = false;
-/**@type {String} */
+/**@type {string} */
 let groupId;
 /**@type {HTMLElement} */
 let root;
@@ -41,6 +41,7 @@ const loadSettings = ()=>{
         extensions: ['png', 'webp', 'gif'],
         grayscale: true,
         mute: true,
+        costumes: {},
     }, chat_metadata.triggerCards ?? {});
     chat_metadata.triggerCards = settings;
 };
@@ -182,7 +183,7 @@ eventSource.on(event_types.CHAT_CHANGED, ()=>chatChanged());
 
 
 
-const handleClick = async (/**@type {MouseEvent}*/evt, /**@type {String}*/fullName) => {
+const handleClick = async (/**@type {MouseEvent}*/evt, /**@type {string}*/fullName) => {
     evt.preventDefault();
     evt.stopPropagation();
     const [name, ...args] = fullName.split('::');
@@ -238,6 +239,76 @@ const handleClick = async (/**@type {MouseEvent}*/evt, /**@type {String}*/fullNa
         }
     }
 };
+/**
+ * @param {MouseEvent} evt
+ * @param {string} fullName
+ * @param {HTMLElement} wrap
+ */
+const handleContext = async(evt, fullName, wrap) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+    wrap.classList.add('sttc--hover');
+    const [name, ...args] = fullName.split('::');
+    const response = await fetch('/api/plugins/costumes/', {
+        method: 'POST',
+        headers: getRequestHeaders(),
+        body: JSON.stringify({ folder: name, recurse: true }),
+    });
+    if (!response.ok) {
+        wrap.classList.remove('sttc--hover');
+        toastr.error(`Failed to retrieve costumes: ${response.status} - ${response.statusText}`);
+        return;
+    }
+    const costumes = await response.json();
+    const rect = wrap.getBoundingClientRect();
+    const blocker = document.createElement('div'); {
+        blocker.classList.add('sttc--blocker');
+        const clone = /**@type {HTMLElement}*/(wrap.cloneNode(true)); {
+            clone.title = 'Close menu';
+            clone.style.top = `${rect.top}px`;
+            clone.style.left = `${rect.left}px`;
+            clone.addEventListener('click', ()=>{
+                blocker.remove();
+                wrap.classList.remove('sttc--hover');
+            });
+            blocker.append(clone);
+        }
+        const content = document.createElement('div'); {
+            content.classList.add('sttc--content');
+            content.style.bottom = `calc(100vh - ${rect.top}px - 2em)`;
+            const urls = await Promise.all(costumes.map(it=>findImage(it)));
+            let i = -1;
+            for (const url of urls) {
+                i++;
+                const costume = costumes[i];
+                const cost = document.createElement('div'); {
+                    cost.classList.add('sttc--costume');
+                    cost.addEventListener('click', ()=>{
+                        settings.costumes[fullName] = costume;
+                        blocker.remove();
+                        wrap.classList.remove('sttc--hover');
+                        executeSlashCommandsWithOptions(`/costume ${costume}`);
+                        saveMetadataDebounced();
+                        restart();
+                    });
+                    const img = document.createElement('img'); {
+                        img.src = url;
+                        img.classList.add();
+                        cost.append(img);
+                    }
+                    const lbl = document.createElement('div'); {
+                        lbl.classList.add('sttc--label');
+                        lbl.textContent = costume.split('/').pop();
+                        cost.append(lbl);
+                    }
+                    content.append(cost);
+                }
+            }
+            blocker.append(content);
+        }
+        document.body.append(blocker);
+    }
+};
 const handleTitle = async (el, fullName) => {
     const [name, ...args] = fullName.split('::');
     let titleParts = [name];
@@ -259,6 +330,7 @@ const handleTitle = async (el, fullName) => {
             'alt + click: mute',
         );
     }
+    titleParts.push('right click to change costume');
     titleParts.splice(1, 0, '-'.repeat(titleParts.reduce((max,cur)=>Math.max(max,cur.length),0) * 1.2));
     el.title = titleParts.join('\n');
 };
@@ -315,15 +387,20 @@ const updateMembers = async() => {
             img.remove();
         }
         for (const name of added) {
+            const namePart = name.split('::')[0];
+            if (settings.costumes?.[namePart]) {
+                executeSlashCommandsWithOptions(`/costume ${settings.costumes[namePart]}`);
+            }
             nameList.push(name);
             const wrap = document.createElement('div'); {
                 wrap.classList.add('sttc--wrapper');
                 wrap.addEventListener('click', (evt)=>handleClick(evt, name));
+                wrap.addEventListener('contextmenu', (evt)=>handleContext(evt, name, wrap));
                 wrap.addEventListener('pointerenter', ()=>handleTitle(wrap, name));
                 const img = document.createElement('img'); {
                     img.classList.add('sttc--img');
                     img.setAttribute('data-character', name);
-                    img.src = await findImage(name.split('::')[0]);
+                    img.src = await findImage(settings.costumes?.[namePart] ?? namePart);
                     wrap.append(img);
                 }
                 const before = imgs.find(it=>name.localeCompare(it.getAttribute('data-character')) == -1);
