@@ -43,6 +43,7 @@ const init = ()=>{
             await settings.show();
             return '';
         },
+        helpString: 'Open Trigger Cards setting menu.',
     }));
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({ name: 'tc-on',
         callback: (args, value)=>activate(args, value),
