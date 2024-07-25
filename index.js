@@ -1,4 +1,4 @@
-import { chat_metadata, eventSource, event_types, getRequestHeaders, reloadMarkdownProcessor, sendSystemMessage } from '../../../../script.js';
+import { characters, chat_metadata, eventSource, event_types, getRequestHeaders, reloadMarkdownProcessor, sendSystemMessage } from '../../../../script.js';
 import { getContext, saveMetadataDebounced } from '../../../extensions.js';
 import { executeSlashCommands, executeSlashCommandsWithOptions, registerSlashCommand } from '../../../slash-commands.js';
 import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
@@ -21,7 +21,7 @@ let loop;
 /**@type {Boolean} */
 let isRunning = false;
 /**@type {string} */
-let groupId;
+export let groupId;
 /**@type {HTMLElement} */
 let root;
 /**@type {HTMLImageElement[]} */
@@ -34,7 +34,7 @@ let nameList = [];
 
 const loadSettings = ()=>{
     settings = new Settings();
-    settings.onRestart = restartDebounced;
+    settings.onRestart = ()=>restartDebounced();
     chat_metadata.triggerCards = settings;
 };
 const init = ()=>{
@@ -121,8 +121,7 @@ const init = ()=>{
 };
 init();
 // eventSource.on(event_types.APP_READY, ()=>init());
-const activate = (args, members) => {
-    if (!groupId) return;
+const activate = async(args, members) => {
     const memberList = members?.split(/\s*,\s*/)?.filter(it=>it);
     const extList = args.extensions?.split(',')?.filter(it=>it);
     let gray;
@@ -145,12 +144,29 @@ const activate = (args, members) => {
     settings.isEnabled = true;
     saveMetadataDebounced();
     restart();
+    let wasActive = settings.isActive;
+    if (wasActive) {
+        settings.hide();
+    }
+    settings.registerSettings();
+    await settings.init();
+    if (wasActive) {
+        settings.show();
+    }
 };
 const deactivate = async () => {
-    if (!groupId) return;
     settings.isEnabled = false;
     saveMetadataDebounced();
     await end();
+    let wasActive = settings.isActive;
+    if (wasActive) {
+        settings.hide();
+    }
+    settings.registerSettings();
+    await settings.init();
+    if (wasActive) {
+        settings.show();
+    }
 };
 const showHelp = async () => {
     const converter = reloadMarkdownProcessor();
@@ -164,15 +180,10 @@ const showHelp = async () => {
 const chatChanged = async()=>{
     const context = getContext();
     groupId = context.groupId;
-    if (context.groupId) {
-        loadSettings();
-        if (settings?.isEnabled) {
-            await restart();
-        } else {
-            await end();
-        }
+    loadSettings();
+    if (settings?.isEnabled) {
+        await restart();
     } else {
-        settings = null;
         await end();
     }
 };
@@ -345,13 +356,18 @@ const getNames = (present = false)=>{
             }
         }
     }
-    const context = getContext();
-    const group = context.groups.find(it=>it.id == groupId);
-    const members = group.members.map(m=>context.characters.find(c=>c.avatar == m));
-    const names = members.map(it=>it.name);
-    return names;
+    if (groupId) {
+        const context = getContext();
+        const group = context.groups.find(it=>it.id == groupId);
+        const members = group.members.map(m=>context.characters.find(c=>c.avatar == m));
+        const names = members.map(it=>it.name);
+        return names;
+    } else {
+        return [characters[getContext().characterId]].map(it=>it.name);
+    }
 };
 const getMuted = ()=>{
+    if (!groupId) return [];
     const context = getContext();
     const group = context.groups.find(it=>it.id == groupId);
     const members = group.disabled_members.map(m=>context.characters.find(c=>c.avatar == m));

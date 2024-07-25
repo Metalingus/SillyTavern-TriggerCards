@@ -2,6 +2,7 @@ import { chat_metadata } from '../../../../../script.js';
 import { saveMetadataDebounced } from '../../../../extensions.js';
 import { delay } from '../../../../utils.js';
 import { quickReplyApi } from '../../../quick-reply/index.js';
+import { groupId } from '../index.js';
 import { ActionSetting } from './settings/ActionSetting.js';
 import { BaseSetting } from './settings/BaseSetting.js';
 import { CheckboxSetting } from './settings/CheckboxSetting.js';
@@ -10,7 +11,7 @@ import { SettingAction } from './settings/SettingAction.js';
 import { TextSetting } from './settings/TextSetting.js';
 
 export class Settings {
-    /**@type {boolean} */ isEnabled = true;
+    /**@type {boolean} */ isEnabled = groupId ? true : false;
     /**@type {string} */ actionQrSet = null;
     /**@type {string} */ memberQrSet = null;
     /**@type {string[]} */ memberList = null;
@@ -21,6 +22,9 @@ export class Settings {
     /**@type {{[index:string]:string}} */ costumes = {};
 
     /**@type {BaseSetting[]}*/ settingList = [];
+    get isActive() {
+        return this.dom.classList.contains('sttc--active');
+    }
 
 
     /**@type {()=>void} */ onRestart;
@@ -33,6 +37,20 @@ export class Settings {
         Object.assign(this, chat_metadata.triggerCards ?? {});
         this.registerSettings();
         this.init();
+    }
+
+    toJSON() {
+        return {
+            isEnabled: this.isEnabled,
+            actionQrSet: this.actionQrSet,
+            memberQrSet: this.memberQrSet,
+            memberList: this.memberList,
+            expression: this.expression,
+            extensions: this.extensions,
+            grayscale: this.grayscale,
+            mute: this.mute,
+            costumes: this.costumes,
+        };
     }
 
     load() {
@@ -64,9 +82,19 @@ export class Settings {
                         tooltip: 'Reset all settings for this chat',
                         action: async()=>{
                             this.hide();
-                            this.load();
+                            Object.assign(this, {
+                                isEnabled: groupId ? true : false,
+                                actionQrSet: null,
+                                memberQrSet: null,
+                                memberList: null,
+                                expression: 'joy',
+                                extensions: ['png', 'webp', 'gif'],
+                                grayscale: true,
+                                mute: true,
+                                costumes: {},
+                            });
                             this.registerSettings();
-                            this.init();
+                            await this.init();
                             this.show();
                             this.save(true);
                         },
@@ -338,7 +366,7 @@ export class Settings {
         this.dom.remove();
     }
     async toggle(parent) {
-        if (this.dom.classList.contains('sttc--active')) {
+        if (this.isActive) {
             this.hide();
         } else {
             await this.show(parent);
