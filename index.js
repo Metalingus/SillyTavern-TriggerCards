@@ -387,9 +387,9 @@ const findImage = async(name) => {
     }
 };
 const updateMembers = async() => {
+    let expression;
+    let extensions;
     while (settings?.isEnabled && isRunning) {
-        let expression;
-        let extensions;
         const names = getNames();
         const present = getNames(true);
         const muted = getMuted();
@@ -442,7 +442,7 @@ const updateMembers = async() => {
             } else {
                 img.closest('.sttc--wrapper').classList.remove('sttc--chatty');
             }
-            if (expression != settings.expression || extensions != settings.extensions) {
+            if (expression != settings.expression || extensions != settings.extensions.join(', ')) {
                 const namePart = img.getAttribute('data-character').split('::')[0];
                 img.src = await findImage(settings.costumes?.[namePart] ?? namePart);
             }
