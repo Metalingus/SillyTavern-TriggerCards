@@ -187,7 +187,7 @@ const chatChanged = async()=>{
         await end();
     }
 };
-eventSource.on(event_types.CHAT_CHANGED, ()=>chatChanged());
+eventSource.on(event_types.CHAT_CHANGED, ()=>(chatChanged(),null));
 
 
 
