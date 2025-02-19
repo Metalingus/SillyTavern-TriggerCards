@@ -382,15 +382,17 @@ const findImage = async (name) => {
       headers: getRequestHeaders(),
     });
     if (resp.ok) {
+      console.log(url)
       return url;
     } else {
-      const url = `/thumbnail?type=avatar&file=${name}.${ext}`;
-      const resp = await fetch(url, {
+      const urlThumb = `/thumbnail?type=avatar&file=${name}.${ext}`;
+      const respThumb = await fetch(urlThumb, {
         method: "HEAD",
         headers: getRequestHeaders(),
       });
-      if (resp.ok) {
-        return url;
+      if (respThumb.ok) {
+          console.log(urlThumb)
+        return urlThumb;
       }
     }
   }
