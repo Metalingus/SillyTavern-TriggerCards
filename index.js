@@ -382,7 +382,6 @@ const findImage = async (name) => {
       headers: getRequestHeaders(),
     });
     if (resp.ok) {
-      console.log(url)
       return url;
     } else {
       const urlThumb = `/thumbnail?type=avatar&file=${name}.${ext}`;
@@ -391,7 +390,6 @@ const findImage = async (name) => {
         headers: getRequestHeaders(),
       });
       if (respThumb.ok) {
-          console.log(urlThumb)
         return urlThumb;
       }
     }
